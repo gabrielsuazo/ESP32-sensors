@@ -1,15 +1,32 @@
-//Librairies
 
+// Template ID, Device Name and Auth Token are provided by the Blynk.Cloud
+// See the Device Info tab, or Template settings
+#define BLYNK_TEMPLATE_ID "TMPLQrBiNVeP"
+#define BLYNK_DEVICE_NAME "ESP32sensors"
+#define BLYNK_AUTH_TOKEN "tuCubZAOwxDeAFWPxJMtFDqoUJ1u_uHj"
+
+// Comment this out to disable prints and save space
+//#define BLYNK_PRINT Serial
+
+//Librairies
 #include <WiFi.h>
 #include <WiFiClient.h>
-#include <WebServer.h>
-#include <ArduinoJson.h>
+#include <BlynkSimpleEsp32.h>
 #include <ESPmDNS.h>
 #include <Arduino.h>
 #include "DFRobot_VEML7700.h"
 #include "DHT.h"
 
+char auth[] = BLYNK_AUTH_TOKEN;
+
+// Your WiFi credentials.
+// Set password to "" for open networks.
+char ssid[] = "Freebox-8CB84E";
+char pass[] = "incisis@-obstem-perdebita6-verbulis@";
+
 //Define variables et ports
+
+BlynkTimer timer;
 
 //our sensor is DHT11 typed
 #define DHTTYPE DHT11
@@ -27,7 +44,6 @@ uint8_t DHTPin = 4;
 #define PIN_VOUT2     17
 #define PIN_VTH       26
 
-
 //Variables globales
 
 float temp=0;
@@ -43,17 +59,7 @@ DHT dht(DHTPin, DHTTYPE);
 const int sampleWindow = 2000; 
 unsigned int sample;
 
-//Pour la connexion Wi-Fi
-const char* ssid = "Sense";//  "PAT13935 5252";
-const char* password = "i90QcOPdtcVL"; //"B|10i859";
-WebServer server(8081);//port 8081
-
-
 DFRobot_VEML7700 als;
-
-//Taille du JSON
-StaticJsonDocument<600> firstJSON;
-char buffer[600];
 
 //Pour le capteur de particule
 int count=0;
@@ -181,17 +187,8 @@ Serial.println("");
   } 
 }
 
-//Mise en place du JSON
-void setupJson(){
-  firstJSON["all"]["temperature"] = 0;
-  firstJSON["all"]["humidity"] = 0;
-  firstJSON["all"]["brightness"] = 0;
-  firstJSON["all"]["particle"] = 0;
-  firstJSON["all"]["airquality"] = 0;
-  firstJSON["all"]["sound"] = 0;
-}
-
-//Lectures des mesures et mise en place dans le JSON
+//Lectures des mesures 
+// This function sends the data every three seconds to the correspondent Virtual Pins.
 void updateData(){
   while (!particulesReady || !soundReady){
   }
@@ -200,12 +197,12 @@ void updateData(){
   Serial.println("lux: ");
   Serial.println(lux);
   Serial.println("");
-  firstJSON["all"]["temperature"] = temp;
-  firstJSON["all"]["humidity"] = hum;
-  firstJSON["all"]["brightness"] = lux;
-  firstJSON["all"]["particle"] = particules;
-  firstJSON["all"]["airquality"] = ppm();
-  firstJSON["all"]["sound"] = decibels;
+  Blynk.virtualWrite(V4, temp);
+  Blynk.virtualWrite(V1, hum);
+  Blynk.virtualWrite(V0, lux);
+  Blynk.virtualWrite(V2, particules);
+  Blynk.virtualWrite(V3, ppm());
+  Blynk.virtualWrite(V5, decibels);
 
   particulesReady = false;
   soundReady = false;
@@ -213,78 +210,23 @@ void updateData(){
   Serial.println("");
 }
 
-//Fonction setup Wifi
-void setupWifi(){
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
-  Serial.println("");
-  // Wait for connection
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("");
-  Serial.print("Connected to ");
-  Serial.println(ssid);
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
 
-  if (MDNS.begin("esp32")) {
-    Serial.println("MDNS responder started");
-  }
+// This function is called every time the device is connected to the Blynk.Cloud
+BLYNK_CONNECTED()
+{
 
-  server.on("/", handleRoot);
-
-  server.on("/inline", []() {
-    server.send(200, "text/plain", "this works as well");
-  });
-
-  server.onNotFound(handleNotFound);
-
-  server.begin();
-  Serial.println("HTTP server started");
-}
-/*
-server.on("/get-message", HTTP_GET, [](AsyncWebServerRequest *request) {
-  StaticJsonDocument<100> data;
-  if (request->hasParam("message"))
-  {
-    data["message"] = request->getParam("message")->value();
-  }
-  else {
-    data["message"] = "No message parameter";
-  }
-  String response;
-  serializeJson(data, response);
-  request->send(200, "application/json", response);
-});*/
-
-void handleRoot() {
-  server.sendHeader("Access-Control-Allow-Origin", "*");
-  server.send(200, "application/json", buffer);
-  Serial.println("request send : ");
-  Serial.println(buffer);
 }
 
-void handleNotFound() {
-  String message = "File Not Found\n\n";
-  message += "URI: ";
-  message += server.uri();
-  message += "\nMethod: ";
-  message += (server.method() == HTTP_GET) ? "GET" : "POST";
-  message += "\nArguments: ";
-  message += server.args();
-  message += "\n";
-  for (uint8_t i = 0; i < server.args(); i++) {
-    message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
-  }
-  server.send(404, "text/plain", message);
-  Serial.println("handleNotFound() ");
-  Serial.println(message);
-}
+void setup()
+{
+  // Debug console
+  Serial.begin(115200);
 
-void setup() {
-  
+  Blynk.begin(auth, ssid, pass);
+  // You can also specify server:
+  //Blynk.begin(auth, ssid, pass, "blynk.cloud", 80);
+  //Blynk.begin(auth, ssid, pass, IPAddress(192,168,1,100), 8080);
+
   //Mise en place de la liaison série avec le moniteur
   Serial.begin(115200);
   
@@ -327,18 +269,14 @@ void setup() {
     NULL,            // Task handle
     1                // Core you want to run the task on (0 or 1)
   );
-  
-  //Mise en place de la Wi-Fi
-  //setupWifi();
-  
-  //Mise en place du Json
-  setupJson();
+
+  // Setup a function to be called every 3 seconds
+  timer.setInterval(3000L, updateData);
 }
 
-void loop() {
-  //On s'occupe du serveur
-  //server.handleClient();
-  //On récupère les mesures physiques
-  updateData();
-  serializeJson(firstJSON, buffer);
+void loop()
+{
+  Blynk.run();
+  timer.run();
+
 }
